@@ -1,5 +1,6 @@
 import numpy as np
 import pickle as pkl
+from common.common import shuffle
 
 class LinearRegression:
     def __init__(self, batch_size=32, regularization=0, max_epochs=100, patience=3):
@@ -67,10 +68,7 @@ class LinearRegression:
             regularization_loss = self.regularization * np.sum(self.weights ** 2)
             return mse + regularization_loss
 
-        def shuffle(X, y):
-            indices = np.random.permutation(len(X))
-            return X[indices], y[indices]
-
+        # Declare variables used by the fit method
         best_loss = float('inf')
         best_weights, best_bias = None, None
         epochs_without_improvement = 0
@@ -109,6 +107,8 @@ class LinearRegression:
 
                 epochs_without_improvement += 1
                 if epochs_without_improvement >= self.patience:
+                    self.weights = best_weights
+                    self.bias = best_bias
                     print(f"Early stopping at epoch {epoch} with best validation loss {best_loss:.6f}")
                     break
 
@@ -129,7 +129,7 @@ class LinearRegression:
         X: numpy.ndarray
             The input data.
         """
-        return np.dot(X, self.weights) + self.bias
+        return np.zeros(X.shape[0], dtype=int)
 
     def score(self, X, y):
         """Evaluate the linear model using the mean squared error.
