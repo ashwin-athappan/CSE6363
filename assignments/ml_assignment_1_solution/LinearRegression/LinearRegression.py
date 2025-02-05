@@ -176,7 +176,6 @@ class LinearRegression:
             self.regularization = model.regularization
             self.max_epochs = model.max_epochs
             self.patience = model.patience
-            self.learning_rate = model.learning_rate
             self.loaded = True
             print(f"Model loaded from {filename}")
             return self

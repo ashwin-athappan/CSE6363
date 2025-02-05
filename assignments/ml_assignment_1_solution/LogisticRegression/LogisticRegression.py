@@ -24,6 +24,7 @@ class LogisticRegression:
         self.patience = patience
         self.weights = None
         self.bias = None
+        self.loaded = False
         self.learning_rate = 0.1
         self.loss_history = []
 
@@ -138,6 +139,44 @@ class LogisticRegression:
         y: numpy.ndarray
             The target data.
         """
-        # TODO: Implement the scoring function.
-        y_pred = self.predict(X)
-        return np.mean((y - y_pred) ** 2)
+        val_logits = np.dot(X, self.weights) + self.bias
+        val_probs = self.softmax(val_logits)
+        accuracy = np.mean(np.argmax(val_probs, axis=1) == y)
+        return accuracy * 100
+
+    def save(self, filename):
+        """Save the model to a file.
+
+        Parameters
+        ----------
+        filename: str
+            The name of the file to save the model.
+        """
+        with open(filename, 'wb') as file:
+            pkl.dump(self, file)
+
+    def load(self, filename):
+        """Load the model from a file.
+
+        Parameters
+        ----------
+        filename: str
+            The name of the file to load the model from.
+        """
+        try:
+            with open(filename, 'rb') as f:
+                model = pkl.load(f)
+            self.weights = model.weights
+            self.bias = model.bias
+            self.loss_history = model.loss_history
+            self.learning_rate = model.learning_rate
+            self.batch_size = model.batch_size
+            self.regularization = model.regularization
+            self.max_epochs = model.max_epochs
+            self.patience = model.patience
+            self.loaded = True
+            print(f"Model loaded from {filename}")
+            return self
+        except FileNotFoundError:
+            print(f"File {filename} not found")
+            return None
