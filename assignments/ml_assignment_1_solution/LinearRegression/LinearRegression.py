@@ -46,7 +46,7 @@ class LinearRegression:
         n_samples, n_features = X.shape if X.ndim > 1 else (len(X), 1)
 
         # Initialize weights and bias based on y dimensions
-        if y.ndim == 1:  # Single output
+        if y.ndim == 1:
             self.weights = np.zeros(n_features)
             self.bias = 0.0
         else:  # Multi-output regression

@@ -2,7 +2,6 @@ import numpy as np
 import pickle as pkl
 from common.common import shuffle
 
-
 class LogisticRegression:
     def __init__(self, batch_size=32, regularization=0, max_epochs=1000, patience=3):
         """Logistic Regression using Gradient Descent.
@@ -48,7 +47,6 @@ class LogisticRegression:
             The number of epochs to wait before stopping if the validation loss
             does not improve.
         """
-
         self.batch_size = batch_size
         self.regularization = regularization
         self.max_epochs = max_epochs
@@ -58,7 +56,9 @@ class LogisticRegression:
         num_classes = len(np.unique(y))
 
         # One-hot encoding of labels
-        y_one_hot = np.eye(num_classes)[y]  # Create one-hot encoded target labels
+        # y_one_hot will contain 1 in the column of the class and 0 in the other columns
+        y_one_hot = np.eye(num_classes)[y]
+
         # Initialize weights and bias based on y dimensions
         self.weights = np.zeros((n_features, num_classes))  # Adjust for multi-class
         self.bias = np.zeros(num_classes)  # Bias for each class
@@ -139,4 +139,5 @@ class LogisticRegression:
             The target data.
         """
         # TODO: Implement the scoring function.
-        pass
+        y_pred = self.predict(X)
+        return np.mean((y - y_pred) ** 2)
