@@ -136,3 +136,5 @@ saved_models/
 
 archive/
 data/
+
+**/nyc_taxi_data.npy
