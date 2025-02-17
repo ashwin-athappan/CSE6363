@@ -1,7 +1,5 @@
 import numpy as np
-import pandas as pd
-import pickle
-
+import json
 
 class Layer:
     def forward(self, inp):
@@ -12,11 +10,11 @@ class Layer:
 
 
 class Linear(Layer):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dimension, output_dimension):
+        super().__init__()
         self.inp = None
-        # Xavier/Glorot initialization with smaller scale
-        self.weights = np.random.randn(input_dim, output_dim) * np.sqrt(1.0 / (input_dim + output_dim))
-        self.bias = np.zeros((1, output_dim))
+        self.weights = np.random.randn(input_dimension, output_dimension)
+        self.bias = np.zeros((1, output_dimension))
 
     def forward(self, inp):
         self.inp = inp
@@ -42,10 +40,13 @@ class Linear(Layer):
 
 class Sigmoid(Layer):
     def __init__(self):
+        super().__init__()
+        self.inp = None
         self.output = None
 
     def forward(self, inp):
         # Clip input to prevent overflow
+        self.inp = inp
         inp = np.clip(inp, -500, 500)
         self.output = 1 / (1 + np.exp(-inp))
         return self.output
@@ -68,26 +69,36 @@ class ReLU(Layer):
         return grad_input
 
 
-class MSELoss:
+class BinaryCrossEntropyLoss(Layer):
     def __init__(self):
-        self.predictions = None
-        self.targets = None
+        self.predicted_probabilities = None
+        self.true_labels = None
 
-    def forward(self, predictions, targets):
-        self.predictions = predictions
-        self.targets = targets.reshape(predictions.shape)
-        # Use np.square for better numerical stability
-        diff = self.predictions - self.targets
-        return np.mean(np.square(diff))
+    def forward_with_labels(self, predicted_probabilities, true_labels):
+        self.true_labels = true_labels
+        return self.forward(predicted_probabilities)
 
-    def backward(self):
-        n_samples = self.targets.shape[0]
-        # Clip the gradient to prevent explosion
-        grad = np.clip(2 * (self.predictions - self.targets) / n_samples, -1e3, 1e3)
-        return grad
+    def forward(self, predicted_probabilities):
+        # Clip predicted probabilities to avoid log(0) or log(1)
+        self.predicted_probabilities = np.clip(predicted_probabilities, 1e-15, 1 - 1e-15)
+
+        # Calculate binary cross-entropy loss
+        loss = -np.mean(self.true_labels * np.log(self.predicted_probabilities) +
+                        (1 - self.true_labels) * np.log(1 - self.predicted_probabilities))
+        return loss
+
+    def backward_with_labels(self, predicted_probabilities, true_labels):
+        self.true_labels = true_labels
+        return self.backward(predicted_probabilities)
+
+    def backward(self, predicted_probabilities):
+        # Compute the gradient of the loss with respect to the input
+        input_gradient = (predicted_probabilities - self.true_labels) / (
+                self.predicted_probabilities * (1 - self.predicted_probabilities) * self.true_labels.size)
+        return input_gradient
 
 
-class Sequential:
+class Sequential(Layer):
     def __init__(self):
         self.layers = []
 
@@ -97,144 +108,37 @@ class Sequential:
     def forward(self, inp):
         for layer in self.layers:
             inp = layer.forward(inp)
-            # Add gradient checking
-            if np.any(np.isnan(inp)) or np.any(np.isinf(inp)):
-                print(f"Warning: NaN or Inf detected in forward pass at {layer.__class__.__name__}")
-                inp = np.nan_to_num(inp, nan=0.0, posinf=1e3, neginf=-1e3)
         return inp
 
-    def backward(self, grad_output, learning_rate=0.1):
+    def backward(self, grad_output):
         for layer in reversed(self.layers):
-            if isinstance(layer, Linear):
-                grad_output = layer.backward(grad_output, learning_rate)
-            else:
-                grad_output = layer.backward(grad_output)
-            # Add gradient checking
-            if np.any(np.isnan(grad_output)) or np.any(np.isinf(grad_output)):
-                print(f"Warning: NaN or Inf detected in backward pass at {layer.__class__.__name__}")
-                grad_output = np.nan_to_num(grad_output, nan=0.0, posinf=1e3, neginf=-1e3)
+            grad_output = layer.backward(grad_output)
+        return grad_output
 
-    def save_weights(self, filename):
-        weights = [(layer.weights, layer.bias) for layer in self.layers if isinstance(layer, Linear)]
-        with open(filename, 'wb') as f:
-            pickle.dump(weights, f)
-
-    def load_weights(self, filename):
-        with open(filename, 'rb') as f:
-            weights = pickle.load(f)
-        idx = 0
+    def update(self, lr):
         for layer in self.layers:
-            if isinstance(layer, Linear):
-                layer.weights, layer.bias = weights[idx]
-                idx += 1
+            if hasattr(layer, "update"):
+                layer.update(lr)
 
 
-def preprocess_data(X, y=None, is_training=True):
-    df_X = pd.DataFrame(X)
-
-    # Convert to numeric, handling errors
-    df_X = df_X.apply(pd.to_numeric, errors='coerce')
-
-    # Drop columns with too many missing values
-    if is_training:
-        cols_to_keep = df_X.columns[df_X.isnull().mean() < 0.3]
-        df_X = df_X[cols_to_keep]
-
-    # Fill remaining missing values
-    df_X = df_X.fillna(df_X.mean())
-
-    # Robust scaling to handle outliers
-    if is_training:
-        q1 = df_X.quantile(0.25)
-        q3 = df_X.quantile(0.75)
-        iqr = q3 - q1
-        df_X = (df_X - q1) / iqr
-
-    # Clip extreme values
-    df_X = df_X.clip(-5, 5)
-
-    X_processed = df_X.to_numpy(dtype=np.float32)
-
-    if y is not None:
-        # Log transform for target variable (if all values are positive)
-        if np.all(y > 0):
-            y_processed = np.log1p(y)
-        else:
-            y_processed = y
-        y_processed = np.array(y_processed, dtype=np.float32).reshape(-1, 1)
-        return X_processed, y_processed
-
-    return X_processed
+def save_weights(model, file_path):
+    weights = {}
+    for i, layer in enumerate(model.layers):
+        if hasattr(layer, 'weights'):
+            weights[f'layer_{i}'] = layer.weights.tolist()
+        if hasattr(layer, 'bias'):
+            weights[f'layer_{i}_bias'] = layer.bias.tolist()
+    with open(file_path, 'w') as f:
+        json.dump(weights, f)
+    print(f"Weights saved to {file_path}")
 
 
-def train_model(model, X_train, y_train, epochs=100, batch_size=32, learning_rate=0.001):
-    n_samples = X_train.shape[0]
-    loss_fn = MSELoss()
-    losses = []
-
-    # Learning rate decay
-    initial_lr = learning_rate
-
-    for epoch in range(epochs):
-        # Decay learning rate
-        current_lr = initial_lr / (1 + epoch * 0.01)
-
-        # Shuffle the data
-        indices = np.random.permutation(n_samples)
-        X_shuffled = X_train[indices]
-        y_shuffled = y_train[indices]
-
-        epoch_losses = []
-
-        # Mini-batch training
-        for i in range(0, n_samples, batch_size):
-            X_batch = X_shuffled[i:i + batch_size]
-            y_batch = y_shuffled[i:i + batch_size]
-
-            # Forward pass
-            output = model.forward(X_batch)
-            loss = loss_fn.forward(output, y_batch)
-
-            if np.isnan(loss) or np.isinf(loss):
-                print(f"Warning: Invalid loss value at epoch {epoch}, batch {i // batch_size}")
-                continue
-
-            epoch_losses.append(loss)
-
-            # Backward pass
-            grad_loss = loss_fn.backward()
-            model.backward(grad_loss, current_lr)
-
-        if epoch_losses:
-            avg_loss = np.mean(epoch_losses)
-            losses.append(avg_loss)
-
-            if epoch % 10 == 0:
-                print(f"Epoch {epoch}, Loss: {avg_loss:.4f}, Learning Rate: {current_lr:.6f}")
-
-    return losses
-
-
-# Example usage
-if __name__ == "__main__":
-    # Load and preprocess the data
-    dataset = np.load('nyc_taxi_data.npy', allow_pickle=True).item()
-    X_train, y_train = preprocess_data(dataset["X_train"], dataset["y_train"])
-
-    # Create the model with smaller architecture
-    input_dim = X_train.shape[1]
-    model = Sequential()
-    model.add(Linear(input_dim, 32))
-    model.add(ReLU())
-    model.add(Linear(32, 16))
-    model.add(ReLU())
-    model.add(Linear(16, 1))
-
-    # Train the model with adjusted parameters
-    losses = train_model(model, X_train, y_train,
-                         epochs=100,
-                         batch_size=64,  # Increased batch size for stability
-                         learning_rate=0.0001)  # Reduced learning rate
-
-    # Save the trained model
-    model.save_weights("XOR_solved.w")
+def load_weights(model, file_path):
+    with open(file_path, 'r') as f:
+        weights = json.load(f)
+    for i, layer in enumerate(model.layers):
+        if f'layer_{i}' in weights:
+            layer.weights = np.array(weights[f'layer_{i}'])
+        if f'layer_{i}_bias' in weights:
+            layer.bias = np.array(weights[f'layer_{i}_bias'])
+    print(f"Weights loaded from {file_path}")
