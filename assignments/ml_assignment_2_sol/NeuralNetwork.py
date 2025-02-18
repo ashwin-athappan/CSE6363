@@ -68,6 +68,17 @@ class ReLU(Layer):
         grad_input = np.where(self.inp > 0, grad_output, 0)
         return grad_input
 
+class HyperbolicTangent(Layer):
+    def __init__(self):
+        self.inp = None
+        self.output = None
+
+    def forward(self, inp):
+        self.output = np.tanh(inp)
+        return self.output
+
+    def backward(self, grad_output):
+        return grad_output * (1 - np.square(self.output))
 
 class BinaryCrossEntropyLoss(Layer):
     def __init__(self):
