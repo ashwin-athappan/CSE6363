@@ -13,22 +13,20 @@ class Linear(Layer):
     def __init__(self, input_dimension, output_dimension):
         super().__init__()
         self.inp = None
-        self.weights = np.random.randn(input_dimension, output_dimension)
+        self.weights = np.random.randn(input_dimension, output_dimension) * np.sqrt(2.0 / input_dimension)
         self.bias = np.zeros((1, output_dimension))
 
     def forward(self, inp):
-        self.inp = inp
+        self.inp = np.clip(inp, -1e3, 1e3)  # Clip inputs before multiplication
         return np.dot(self.inp, self.weights) + self.bias
 
     def backward(self, grad_output, learning_rate=0.1):
-        # Clip gradients to prevent explosion
         grad_output = np.clip(grad_output, -1e3, 1e3)
 
         grad_input = np.dot(grad_output, self.weights.T)
         grad_weights = np.dot(self.inp.T, grad_output)
         grad_bias = np.sum(grad_output, axis=0, keepdims=True)
 
-        # Clip gradients for weight updates
         grad_weights = np.clip(grad_weights, -1e3, 1e3)
         grad_bias = np.clip(grad_bias, -1e3, 1e3)
 
@@ -38,6 +36,20 @@ class Linear(Layer):
         return grad_input
 
 
+    # def forward(self, input):
+    #     self.input = input
+    #     return np.dot(input, self.weights) + self.bias
+    #
+    # def backward(self, output_gradient, learning_rate=0.01):
+    #     weights_gradient = np.dot(self.input.T, output_gradient)
+    #     input_gradient = np.dot(output_gradient, self.weights.T)
+    #
+    #     self.weights -= learning_rate * weights_gradient
+    #     self.bias -= learning_rate * np.sum(output_gradient, axis=0, keepdims=True)
+    #
+    #     return input_gradient
+
+
 class Sigmoid(Layer):
     def __init__(self):
         super().__init__()
@@ -45,10 +57,8 @@ class Sigmoid(Layer):
         self.output = None
 
     def forward(self, inp):
-        # Clip input to prevent overflow
-        self.inp = inp
-        inp = np.clip(inp, -500, 500)
-        self.output = 1 / (1 + np.exp(-inp))
+        self.inp = np.clip(inp, -500, 500)  # Clip input to prevent overflow
+        self.output = 1 / (1 + np.exp(-self.inp))
         return self.output
 
     def backward(self, grad_output):
@@ -60,13 +70,13 @@ class ReLU(Layer):
         self.inp = None
 
     def forward(self, inp):
-        self.inp = inp
-        return np.maximum(0, inp)
+        self.inp = np.clip(inp, -1e3, 1e3)  # Clip inputs before applying ReLU
+        return np.maximum(0, self.inp)
 
     def backward(self, grad_output):
-        # Use where to avoid invalid value in multiply
         grad_input = np.where(self.inp > 0, grad_output, 0)
         return grad_input
+
 
 class HyperbolicTangent(Layer):
     def __init__(self):
@@ -74,11 +84,13 @@ class HyperbolicTangent(Layer):
         self.output = None
 
     def forward(self, inp):
-        self.output = np.tanh(inp)
+        self.inp = np.clip(inp, -500, 500)  # Clip input before applying tanh
+        self.output = np.tanh(self.inp)
         return self.output
 
     def backward(self, grad_output):
         return grad_output * (1 - np.square(self.output))
+
 
 class BinaryCrossEntropyLoss(Layer):
     def __init__(self):
@@ -90,10 +102,7 @@ class BinaryCrossEntropyLoss(Layer):
         return self.forward(predicted_probabilities)
 
     def forward(self, predicted_probabilities):
-        # Clip predicted probabilities to avoid log(0) or log(1)
         self.predicted_probabilities = np.clip(predicted_probabilities, 1e-15, 1 - 1e-15)
-
-        # Calculate binary cross-entropy loss
         loss = -np.mean(self.true_labels * np.log(self.predicted_probabilities) +
                         (1 - self.true_labels) * np.log(1 - self.predicted_probabilities))
         return loss
@@ -103,17 +112,17 @@ class BinaryCrossEntropyLoss(Layer):
         return self.backward(predicted_probabilities)
 
     def backward(self, predicted_probabilities):
-        # Compute the gradient of the loss with respect to the input
-        input_gradient = (predicted_probabilities - self.true_labels) / (
+        return (predicted_probabilities - self.true_labels) / (
                 self.predicted_probabilities * (1 - self.predicted_probabilities) * self.true_labels.size)
-        return input_gradient
 
 
 class Sequential(Layer):
     def __init__(self):
         self.layers = []
+        self.loss_history = []
+        self.predicted_classes = None
 
-    def add(self, layer):
+    def add_layer(self, layer):
         self.layers.append(layer)
 
     def forward(self, inp):
@@ -133,6 +142,7 @@ class Sequential(Layer):
 
 
 def save_weights(model, file_path):
+    file_content = {}
     weights = {}
     for i, layer in enumerate(model.layers):
         if hasattr(layer, 'weights'):
@@ -140,13 +150,19 @@ def save_weights(model, file_path):
         if hasattr(layer, 'bias'):
             weights[f'layer_{i}_bias'] = layer.bias.tolist()
     with open(file_path, 'w') as f:
-        json.dump(weights, f)
+        file_content['w'] = weights
+        file_content['loss_history'] = model.loss_history
+        file_content['predicted_classes'] = model.predicted_classes.tolist()
+        json.dump(file_content, f)
     print(f"Weights saved to {file_path}")
 
 
 def load_weights(model, file_path):
     with open(file_path, 'r') as f:
-        weights = json.load(f)
+        file_content = json.load(f)
+        weights = file_content['w']
+        model.loss_history = file_content['loss_history']
+        model.predicted_classes = np.array(file_content['predicted_classes'])
     for i, layer in enumerate(model.layers):
         if f'layer_{i}' in weights:
             layer.weights = np.array(weights[f'layer_{i}'])

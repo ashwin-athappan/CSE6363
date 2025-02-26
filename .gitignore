@@ -138,3 +138,6 @@ archive/
 data/
 
 **/nyc_taxi_data.npy
+**/nyc-taxi-trip-duration/**
+**/*.png
+**/*.zip
