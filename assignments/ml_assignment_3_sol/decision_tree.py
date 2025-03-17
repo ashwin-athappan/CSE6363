@@ -2,6 +2,7 @@ import numpy as np
 from collections import Counter
 from tree_node import TreeNode
 
+from graphviz import Digraph
 
 class DecisionTree:
     """
@@ -9,8 +10,8 @@ class DecisionTree:
     """
 
     def __init__(self, max_depth=4, min_samples_leaf=1,
-                 min_information_gain=0.0, num_features_splitting=None,
-                 criterion='entropy', amount_of_say=None) -> None:
+                 min_samples_split=0.0, num_features_splitting=None,
+                 criterion='entropy', amount_of_say=None, feature_names=None) -> None:
         """
         Parameters:
         max_depth: int -> max depth of the tree
@@ -18,17 +19,19 @@ class DecisionTree:
         min_information_gain: float -> minimum information gain to allow splitting
         num_features_splitting: str -> feature selection strategy ("sqrt", "log", or None)
         criterion: str -> splitting criterion ('gini', 'entropy', or 'misclassification')
-        amount_of_say: float -> used for Adaboost (optional)
+        amount_of_say: float -> used for Adaboost algorithm
+        feature_names: list -> List of feature names for interpretability in visualization.
         """
         self.feature_importance = None
         self.tree = None
         self.labels_in_train = None
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
-        self.min_information_gain = min_information_gain
+        self.min_samples_split = min_samples_split
         self.num_features_splitting = num_features_splitting
         self.criterion = criterion
         self.amount_of_say = amount_of_say
+        self.feature_names = feature_names
 
     def _gini(self, class_probabilities: list) -> float:
         return 1 - sum([p ** 2 for p in class_probabilities])
@@ -120,9 +123,10 @@ class DecisionTree:
 
         node = TreeNode(data, split_feature_idx, split_feature_val, label_probabilities, information_gain)
 
+        # Stopping conditions
         if self.min_samples_leaf > split_1_data.shape[0] or self.min_samples_leaf > split_2_data.shape[0]:
             return node
-        elif information_gain < self.min_information_gain:
+        elif information_gain < self.min_samples_split:
             return node
 
         current_depth += 1
@@ -173,6 +177,49 @@ class DecisionTree:
 
     def print_tree(self) -> None:
         self._print_recursive(node=self.tree)
+    def visualize_tree(self):
+        """
+        Visualizes the decision tree using Graphviz and displays it inside Jupyter Notebook.
+        """
+        if self.tree is None:
+            print("The tree has not been trained yet.")
+            return
+
+        dot = Digraph()
+        self._add_nodes_edges(self.tree, dot)
+        return dot  # This will render in Jupyter Notebook automatically
+
+    def _add_nodes_edges(self, node, dot, parent_name=None):
+        """
+        Recursively adds nodes and edges to the Graphviz object, including the splitting class.
+        """
+        if node is None:
+            return
+
+        # Ensure feature_names is properly indexed
+        feature_name = (
+            self.feature_names[node.feature_idx]
+            if self.feature_names is not None and len(self.feature_names) > node.feature_idx
+            else f"Feature {node.feature_idx}"
+        )
+
+        node_label = (
+            f"{feature_name}\n≤ {node.feature_val:.3f}\n"
+            f"InfoGain: {node.information_gain:.3f}\n"
+            f"Splitting Class: {node.majority_class}"
+        )
+        node_name = str(id(node))  # Unique identifier for Graphviz
+
+        dot.node(node_name, node_label, shape='box')
+
+        if parent_name:
+            dot.edge(parent_name, node_name)
+
+        # Recursively add left and right children
+        self._add_nodes_edges(node.left, dot, node_name)
+        self._add_nodes_edges(node.right, dot, node_name)
+
+
 
     def _calculate_feature_importance(self, node):
         if node is not None:

@@ -12,11 +12,15 @@ class TreeNode:
         self.left = None
         self.right = None
 
-    def node_def(self) -> str:
+        # Determine majority class
+        unique_labels, label_counts = np.unique(self.data[:, -1], return_counts=True)
+        self.majority_class = unique_labels[np.argmax(label_counts)]
 
-        if (self.left or self.right):
-            return f"NODE | Information Gain = {self.information_gain} | Split IF X[{self.feature_idx}] < {self.feature_val} THEN left O/W right"
+    def node_def(self) -> str:
+        if self.left or self.right:
+            return f"NODE | Splitting Class: {self.majority_class} | Information Gain = {self.information_gain:.3f} | Split IF X[{self.feature_idx}] < {self.feature_val:.3f} THEN left O/W right"
         else:
             unique_values, value_counts = np.unique(self.data[:, -1], return_counts=True)
             output = ", ".join([f"{value}->{count}" for value, count in zip(unique_values, value_counts)])
             return f"LEAF | Label Counts = {output} | Pred Probs = {self.prediction_probs}"
+

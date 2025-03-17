@@ -43,7 +43,7 @@ class RandomForestClassifier:
         self.base_learner_list = []
         for base_learner_idx in range(self.n_base_learner):
             base_learner = DecisionTree(max_depth=self.max_depth, min_samples_leaf=self.min_samples_leaf, \
-                                        min_information_gain=self.min_information_gain,
+                                        min_samples_split=self.min_information_gain,
                                         num_features_splitting=self.num_features_splitting)
 
             base_learner.fit(bootstrap_samples_X[base_learner_idx], bootstrap_samples_Y[base_learner_idx])
