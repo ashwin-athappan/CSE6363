@@ -11,16 +11,18 @@ class DecisionTree:
 
     def __init__(self, max_depth=4, min_samples_leaf=1,
                  min_samples_split=0.0, num_features_splitting=None,
-                 criterion='entropy', amount_of_say=None, feature_names=None) -> None:
+                 criterion='entropy', amount_of_say=None, feature_names=None,
+                 min_information_gain=0.0) -> None:
         """
         Parameters:
         max_depth: int -> max depth of the tree
         min_samples_leaf: int -> minimum samples per leaf to allow splitting
-        min_information_gain: float -> minimum information gain to allow splitting
+        min_samples_split: float -> minimum samples to allow splitting
         num_features_splitting: str -> feature selection strategy ("sqrt", "log", or None)
         criterion: str -> splitting criterion ('gini', 'entropy', or 'misclassification')
         amount_of_say: float -> used for Adaboost algorithm
         feature_names: list -> List of feature names for interpretability in visualization.
+        min_information_gain: float -> minimum information gain to allow splitting
         """
         self.feature_importance = None
         self.tree = None
@@ -32,6 +34,7 @@ class DecisionTree:
         self.criterion = criterion
         self.amount_of_say = amount_of_say
         self.feature_names = feature_names
+        self.min_information_gain = min_information_gain
 
     def _gini(self, class_probabilities: list) -> float:
         return 1 - sum([p ** 2 for p in class_probabilities])
@@ -126,6 +129,8 @@ class DecisionTree:
         # Stopping conditions
         if self.min_samples_leaf > split_1_data.shape[0] or self.min_samples_leaf > split_2_data.shape[0]:
             return node
+        elif information_gain < self.min_information_gain:  # Add min_information_gain check
+            return node
         elif information_gain < self.min_samples_split:
             return node
 
@@ -186,6 +191,7 @@ class DecisionTree:
             return
 
         dot = Digraph()
+        dot.attr(size="50,10")
         self._add_nodes_edges(self.tree, dot)
         return dot  # This will render in Jupyter Notebook automatically
 
@@ -206,7 +212,7 @@ class DecisionTree:
         node_label = (
             f"{feature_name}\n≤ {node.feature_val:.3f}\n"
             f"InfoGain: {node.information_gain:.3f}\n"
-            f"Splitting Class: {node.majority_class}"
+            f"Splitting Class: {"Survived" if node.majority_class == 0.0 else "Died"}"
         )
         node_name = str(id(node))  # Unique identifier for Graphviz
 
