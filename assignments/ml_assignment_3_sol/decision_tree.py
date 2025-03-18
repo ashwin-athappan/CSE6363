@@ -9,7 +9,7 @@ class DecisionTree:
     Decision Tree Classifier with multiple splitting criteria.
     """
 
-    def __init__(self, max_depth=4, min_samples_leaf=1,
+    def __init__(self, max_depth=5, min_samples_leaf=1,
                  min_samples_split=0.0, num_features_splitting=None,
                  criterion='entropy', amount_of_say=None, feature_names=None,
                  min_information_gain=0.0) -> None:
