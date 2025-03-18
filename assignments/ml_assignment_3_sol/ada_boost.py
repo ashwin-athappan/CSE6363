@@ -20,6 +20,44 @@ class AdaBoost:
         self.learning_rate = learning_rate
         self.learners = []
         self.alphas = []
+        self.label_count = None
+
+    def _calculate_amount_of_say(self, base_learner, X, y):
+        """Calculates the amount of say (alpha) for the weak learner."""
+        K = self.label_count
+        preds = base_learner.predict(X)
+        err = 1 - np.sum(preds == y) / preds.shape[0]
+
+        if err == 0:  # Avoid division by zero
+            return np.inf
+        if err == 1:  # Completely wrong model
+            return -np.inf
+
+        amount_of_say = np.log((1 - err) / err) + np.log(K - 1)
+        return amount_of_say
+
+    def _fit_base_learner(self, X_bootstrapped, y_bootstrapped):
+        """Trains a weak learner and calculates its weight."""
+        base_learner = self.weak_learner(max_depth=1)
+        base_learner.fit(X_bootstrapped, y_bootstrapped)
+        base_learner.amount_of_say = self._calculate_amount_of_say(base_learner, self.X_train, self.y_train)
+        return base_learner
+
+    def _update_dataset(self, sample_weights):
+        """Creates bootstrapped samples w.r.t. sample weights."""
+        n_samples = self.X_train.shape[0]
+        bootstrap_indices = np.random.choice(n_samples, size=n_samples, replace=True, p=sample_weights)
+        X_bootstrapped = self.X_train[bootstrap_indices]
+        y_bootstrapped = self.y_train[bootstrap_indices]
+        return X_bootstrapped, y_bootstrapped
+
+    def _calculate_sample_weights(self, base_learner):
+        """Calculates sample weights for boosting."""
+        preds = base_learner.predict(self.X_train)
+        incorrect = (preds != self.y_train).astype(int)
+        sample_weights = np.exp(base_learner.amount_of_say * incorrect)
+        sample_weights /= np.sum(sample_weights)  # Normalize
+        return sample_weights
 
     def fit(self, X, y):
         """
@@ -29,56 +67,45 @@ class AdaBoost:
         - X: Training features, shape (n_samples, n_features)
         - y: Training labels, shape (n_samples,)
         """
-        X = np.array(X)
-        y = np.array(y)
+        self.X_train = np.array(X)
+        self.y_train = np.array(y)
+        self.label_count = len(np.unique(y))
+        sample_weights = np.full(X.shape[0], 1 / X.shape[0])
 
-        # Ensure labels are in {-1, +1}
-        classes = np.unique(y)
-        if len(classes) != 2:
-            raise ValueError("AdaBoost requires binary classification with labels in {-1, +1}.")
-        y = np.where(y == classes[0], -1, 1)
-
-        n_samples = X.shape[0]
-        sample_weights = np.full(n_samples, 1 / n_samples)
+        self.learners = []
+        self.alphas = []
 
         for _ in range(self.num_learners):
-            # Train a weak learner on weighted samples
-            tree = self.weak_learner(max_depth=1)  # Stump (depth=1)
-            tree.fit(X, y, sample_weight=sample_weights)
+            X_bootstrapped, y_bootstrapped = self._update_dataset(sample_weights)
+            base_learner = self._fit_base_learner(X_bootstrapped, y_bootstrapped)
 
-            # Get predictions and error
-            preds = tree.predict(X)
-            err = np.sum(sample_weights[preds != y])
+            if base_learner.amount_of_say == np.inf:  # Perfect classifier
+                self.learners.append(base_learner)
+                self.alphas.append(1)
+                break
 
-            if err == 0:  # Perfect classifier
-                self.learners = [tree]
-                self.alphas = [1]
-                return
+            self.learners.append(base_learner)
+            self.alphas.append(base_learner.amount_of_say)
 
-            # Compute learner weight (alpha)
-            alpha = self.learning_rate * 0.5 * np.log((1 - err) / (err + 1e-10))
+            sample_weights = self._calculate_sample_weights(base_learner)
 
-            # Update sample weights
-            sample_weights *= np.exp(-alpha * y * preds)
-            sample_weights /= np.sum(sample_weights)  # Normalize
+    def _predict_scores_w_base_learners(self, X):
+        """Aggregates predictions from all base learners."""
+        pred_scores = np.zeros((self.num_learners, X.shape[0], self.label_count))
+        for idx, base_learner in enumerate(self.learners):
+            pred_probs = base_learner.predict_probabilities(X)
+            pred_scores[idx] = pred_probs * self.alphas[idx]
+        return pred_scores
 
-            # Store weak learner and its weight
-            self.learners.append(tree)
-            self.alphas.append(alpha)
+    def predict_proba(self, X):
+        """Returns predicted probabilities for input data."""
+        base_learners_pred_scores = self._predict_scores_w_base_learners(X)
+        avg_base_learners_pred_scores = np.mean(base_learners_pred_scores, axis=0)
+        column_sums = np.sum(avg_base_learners_pred_scores, axis=1)
+        pred_probs = avg_base_learners_pred_scores / column_sums[:, np.newaxis]
+        return pred_probs
 
     def predict(self, X):
-        """
-        Predicts class labels for input samples.
-
-        Parameters:
-        - X: Input features, shape (n_samples, n_features)
-
-        Returns:
-        - Predicted labels, shape (n_samples,)
-        """
-        X = np.array(X)
-        # Weighted sum of weak learner predictions
-        pred_sum = sum(alpha * learner.predict(X) for alpha, learner in zip(self.alphas, self.learners))
-
-        # Apply sign function to get final prediction
-        return np.sign(pred_sum)
+        """Predicts labels for input data."""
+        pred_probs = self.predict_proba(X)
+        return np.argmax(pred_probs, axis=1)
