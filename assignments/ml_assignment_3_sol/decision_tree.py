@@ -5,10 +5,6 @@ from tree_node import TreeNode
 from graphviz import Digraph
 
 class DecisionTree:
-    """
-    Decision Tree Classifier with multiple splitting criteria.
-    """
-
     def __init__(self, max_depth=5, min_samples_leaf=1,
                  min_samples_split=0.0, num_features_splitting=None,
                  criterion='entropy', amount_of_say=None, feature_names=None,
@@ -129,7 +125,7 @@ class DecisionTree:
         # Stopping conditions
         if self.min_samples_leaf > split_1_data.shape[0] or self.min_samples_leaf > split_2_data.shape[0]:
             return node
-        elif information_gain < self.min_information_gain:  # Add min_information_gain check
+        elif information_gain < self.min_information_gain:
             return node
         elif information_gain < self.min_samples_split:
             return node
@@ -169,7 +165,7 @@ class DecisionTree:
 
     def predict(self, X_set: np.array) -> np.array:
         pred_probs = self.predict_probabilities(X_set)
-        if pred_probs.shape[1] == 1:  # Binary classification
+        if pred_probs.shape[1] == 1:
             return (pred_probs[:, 0] > 0.5).astype(int)
         else:
             return np.argmax(pred_probs, axis=1)
@@ -212,7 +208,7 @@ class DecisionTree:
         node_label = (
             f"{feature_name}\n≤ {node.feature_val:.3f}\n"
             f"InfoGain: {node.information_gain:.3f}\n"
-            f"Splitting Class: {"Survived" if node.majority_class == 0.0 else "Died"}"
+            f"Class: {"Survived" if node.majority_class == 0.0 else "Died"}"
         )
         node_name = str(id(node))  # Unique identifier for Graphviz
 

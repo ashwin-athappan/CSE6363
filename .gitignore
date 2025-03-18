@@ -136,3 +136,6 @@ saved_models/
 
 archive/
 data/
+
+**/.DS_Store
+**/*.zip

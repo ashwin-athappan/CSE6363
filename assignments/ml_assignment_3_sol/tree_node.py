@@ -18,7 +18,7 @@ class TreeNode:
 
     def node_def(self) -> str:
         if self.left or self.right:
-            return f"NODE | Splitting Class: {self.majority_class} | Information Gain = {self.information_gain:.3f} | Split IF X[{self.feature_idx}] < {self.feature_val:.3f} THEN left O/W right"
+            return f"NODE | Class: {self.majority_class} | Information Gain = {self.information_gain:.3f} | Split IF X[{self.feature_idx}] < {self.feature_val:.3f} THEN left O/W right"
         else:
             unique_values, value_counts = np.unique(self.data[:, -1], return_counts=True)
             output = ", ".join([f"{value}->{count}" for value, count in zip(unique_values, value_counts)])

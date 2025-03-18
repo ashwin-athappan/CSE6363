@@ -1,13 +1,15 @@
 import numpy as np
 from decision_tree import DecisionTree
 
-class AdaBoost:
-    def __init__(self, weak_learner=DecisionTree, num_learners=10, learning_rate=1.0):
+class AdaBoost():
+
+    def __init__(self, weak_learner=DecisionTree, num_learners=10, learning_rate=1.0) -> None:
         """
-        Parameters:
-        weak_learner: DecisionTree class
-        num_learners: int -> maximum number of weak learners
-        learning_rate: float -> weight applied to each learner
+        Initialize the AdaBoost classifier.
+
+        :param weak_learner: Base weak learner class (default: DecisionTree with max_depth=1).
+        :param num_learners: Number of base learners in the ensemble.
+        :param learning_rate: Controls the weight update step.
         """
         self.weak_learner = weak_learner
         self.num_learners = num_learners
@@ -15,47 +17,87 @@ class AdaBoost:
         self.learners = []
         self.alphas = []
 
-    def _calculate_error(self, learner, X, y, weights):
-        predictions = learner.predict(X)
-        return np.sum(weights * (predictions != y)) / np.sum(weights)
-
-    def _calculate_alpha(self, error):
-        return 0.5 * self.learning_rate * np.log((1 - error) / max(error, 1e-10))
-
-    def fit(self, X, y):
+    def _calculate_amount_of_say(self, error: float) -> float:
         """
-        Fit AdaBoost classifier where y in {-1, +1}
+        Calculates the weight (alpha) for a weak learner based on its error.
+
+        :param error: The classification error of the weak learner.
+        :return: The computed alpha value.
         """
-        X = np.array(X)
-        y = np.array(y)
-        n_samples = X.shape[0]
-        weights = np.ones(n_samples) / n_samples
+        K = self.label_count
+        return self.learning_rate * (np.log((1 - error) / error) + np.log(K - 1))
+
+    def _update_weights(self, sample_weights: np.array, alpha: float, y_true: np.array, y_pred: np.array) -> np.array:
+        """
+        Updates sample weights based on the classifier's performance.
+
+        :param sample_weights: Current sample weights.
+        :param alpha: Weight of the weak learner.
+        :param y_true: True labels.
+        :param y_pred: Predicted labels.
+        :return: Updated sample weights.
+        """
+        incorrect = (y_pred != y_true).astype(int)
+        sample_weights *= np.exp(alpha * incorrect)
+        return sample_weights / np.sum(sample_weights)
+
+    def fit(self, X_train: np.array, y_train: np.array) -> None:
+        """
+        Train the AdaBoost model.
+
+        :param X_train: Training features.
+        :param y_train: Training labels.
+        """
+        self.X_train = X_train
+        self.y_train = y_train
+        self.label_count = len(np.unique(y_train))
+        n_samples = X_train.shape[0]
+        sample_weights = np.full(n_samples, 1 / n_samples)
 
         for _ in range(self.num_learners):
+            # Bootstrap sampling
+            bootstrap_indices = np.random.choice(n_samples, size=n_samples, replace=True, p=sample_weights)
+            x_bootstrap, y_bootstrap = X_train.to_numpy()[bootstrap_indices], y_train.to_numpy()[bootstrap_indices]
+
+            # Train weak learner
             learner = self.weak_learner()
-            learner.fit(X, y)
+            learner.fit(x_bootstrap, y_bootstrap)
 
-            error = self._calculate_error(learner, X, y, weights)
-            alpha = self._calculate_alpha(error)
+            # Calculate error and alpha
+            y_pred = learner.predict(X_train)
+            error = np.sum(sample_weights * (y_pred != y_train)) / np.sum(sample_weights)
+            if error >= 1 - 1/self.label_count or error == 0:
+                continue  # Skip this iteration if error is too high or zero
 
+            alpha = self._calculate_amount_of_say(error)
+            sample_weights = self._update_weights(sample_weights, alpha, y_train, y_pred)
+
+            # Store the weak learner and its alpha value
             self.learners.append(learner)
             self.alphas.append(alpha)
 
-            predictions = learner.predict(X)
-            weights *= np.exp(-alpha * y * predictions)
-            weights /= np.sum(weights)
-
-            if error < 1e-10:
-                break
-
-    def predict(self, X):
+    def predict_probabilities(self, X: np.array) -> np.array:
         """
-        Predict using sign of weighted sum of weak learners
+        Predict class probabilities for given data.
+
+        :param X: Input features.
+        :return: Class probability distribution.
         """
-        X = np.array(X)
-        predictions = np.zeros(X.shape[0])
+        pred_scores = np.zeros((X.shape[0], self.label_count))
 
         for learner, alpha in zip(self.learners, self.alphas):
-            predictions += alpha * learner.predict(X)
+            pred_probs = learner.predict_probabilities(X)
+            pred_scores += alpha * pred_probs
 
-        return np.sign(predictions)
+        pred_probs = pred_scores / np.sum(pred_scores, axis=1, keepdims=True)
+        return pred_probs
+
+    def predict(self, X: np.array) -> np.array:
+        """
+        Predict class labels for given data.
+
+        :param X: Input features.
+        :return: Predicted class labels.
+        """
+        pred_probs = self.predict_probabilities(X)
+        return np.argmax(pred_probs, axis=1)
